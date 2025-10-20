@@ -13,4 +13,7 @@
 ## Usage
 
 ### Generate prompts to feed the LLM
-`python3 build-prompts.py`
+```
+python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
+e.g. python3 build-prompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
+```
