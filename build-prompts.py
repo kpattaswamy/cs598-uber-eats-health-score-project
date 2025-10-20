@@ -18,43 +18,22 @@ merged_df = pd.merge(
     how='left'
 )
 
-restaurant_category_stats = {}
-restaurant_meta = {}
-current_id = None
+output_rows = []
+for restaurant_id, group in merged_df.groupby('restaurant_id'):
+    meta = group.iloc[0]
+    categories = []
+    for _, row in group.iterrows():
+        categories.append(
+            f"{row['category_x']} ({row['items_count']} items, avg price ${row['average_price']:.2f})"
+        )
+    cat_str = "; ".join(categories)
+    sentence = (
+        f"Restaurant: {meta['name']}, Price Range: {meta['price_range']}, "
+        f"Zip Code: {meta['zip_code']}. Menu Categories: {cat_str}."
+    )
+    output_rows.append({'restaurant_id': restaurant_id, 'summary': sentence})
 
-for _, row in merged_df.iterrows():
-    rid = row['restaurant_id']
+# Save to CSV
+output_df = pd.DataFrame(output_rows)
+output_df.to_csv("prompts.csv", index=False)
 
-    if rid != current_id:
-        if current_id is not None:
-            meta = restaurant_meta
-            print(f"Restaurant: {meta['name']}")
-            print(f"Price Range: {meta['price_range']}")
-            print(f"Zip Code: {meta['zip_code']}")
-            print("Menu Categories:")
-            for cat_info in restaurant_category_stats.values():
-                print(f"  - Category: {cat_info['category_x']}, Items Count: {cat_info['items_count']}, Average Price: ${cat_info['average_price']:.2f}")
-            print()
-            restaurant_category_stats.clear()
-            restaurant_meta.clear()
-
-        current_id = rid
-        restaurant_meta['name'] = row['name']
-        restaurant_meta['price_range'] = row['price_range']
-        restaurant_meta['zip_code'] = row['zip_code']
-
-    restaurant_category_stats[row['category_x']] = {
-        'category_x': row['category_x'],     # category_x' is the menu category column from menus.csv after merge
-        'items_count': row['items_count'],
-        'average_price': row['average_price']
-    }
-
-# Print last restaurant data
-if current_id is not None:
-    meta = restaurant_meta
-    print(f"Restaurant: {meta['name']}")
-    print(f"Price Range: {meta['price_range']}")
-    print(f"Zip Code: {meta['zip_code']}")
-    print("Menu Categories:")
-    for cat_info in restaurant_category_stats.values():
-        print(f"  - Category: {cat_info['category_x']}, Items Count: {cat_info['items_count']}, Average Price: ${cat_info['average_price']:.2f}")
