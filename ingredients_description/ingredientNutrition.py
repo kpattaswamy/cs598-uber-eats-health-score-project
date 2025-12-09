@@ -52,7 +52,7 @@ def load_and_preprocess_data():
         return False
 
 
-def get_nutrition_info_function(ingredient_name: str) -> Dict[str, Any]:
+def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
     """
     Performs a fuzzy search on food descriptions and outputs nutrition information 
     for the best match.
@@ -133,17 +133,17 @@ if __name__ == '__main__':
         
         search_term_1 = "aple"
         print(f"\n--- Searching for: '{search_term_1}' ---")
-        result_1 = get_nutrition_info_function(search_term_1)
+        result_1 = get_nutrition_info(search_term_1)
         print(result_1)
 
         search_term_2 = "chocolate milk" 
         print(f"\n--- Searching for: '{search_term_2}' ---")
-        result_2 = get_nutrition_info_function(search_term_2)
+        result_2 = get_nutrition_info(search_term_2)
         print(result_2)
         
         # A term that shouldn't meet the threshold
         search_term_3 = "asdnasdioejqoiwejqw"
         print(f"\n--- Searching for: '{search_term_3}' ---")
-        result_3 = get_nutrition_info_function(search_term_3)
+        result_3 = get_nutrition_info(search_term_3)
         print(result_3)
 '''
