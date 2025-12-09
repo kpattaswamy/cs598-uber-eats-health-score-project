@@ -1,2 +1,4 @@
 pandas
 argparse
+fuzzywuzzy
+python-Levenshtein

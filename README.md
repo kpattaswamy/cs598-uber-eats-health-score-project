@@ -5,6 +5,11 @@
 1. `mkdir datasets`
 2. `cd datasets/`
 3. Download datasets from: `https://www.kaggle.com/datasets/ahmedshahriarsakib/uber-eats-usa-restaurants-menus?resource=download`
+4. `mkdir food_data`
+5. `cd food_data/`
+6. Go to `https://fdc.nal.usda.gov/download-datasets` and download from Latest Downloads: Branded (most recent month) (most recent year) CSV
+   - ex: Branded April 2025 (CSV)
+   - necessary files: food.csv, nutrient.csv, food_nutrient
 
 ## Install requirements
 
@@ -13,6 +18,7 @@
 ## Usage
 
 ### Generate prompts to feed the LLM
+
 ```
 python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
 
