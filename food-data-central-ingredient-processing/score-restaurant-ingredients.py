@@ -3,6 +3,8 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 from typing import List, Dict, Any, Optional
 import numpy as np
+from multiprocessing import Pool, cpu_count, current_process
+import sys
 
 FOOD_CSV_PATH = 'datasets/food_data/food.csv'
 NUTRIENT_CSV_PATH = 'datasets/food_data/nutrient.csv'
@@ -17,15 +19,13 @@ MAX_INGREDIENTS_PER_ITEM = 4
 IDEAL_CALORIES_PER_MEAL = DRI_CALORIES / 3.0
 IDEAL_SODIUM_PER_MEAL = DRI_SODIUM / 3.0
 IDEAL_PROTEIN_PER_MEAL = DRI_PROTEIN / 3.0
-
 food_df: Optional[pd.DataFrame] = None
 merged_df: Optional[pd.DataFrame] = None
 nutrition_lookup: Dict[str, Dict[str, float]] = {}
 
-def load_and_preprocess_data():
+def load_and_preprocess_data_worker():
     global food_df, merged_df
     try:
-        print("Loading food csv...")
         food_data = pd.read_csv(FOOD_CSV_PATH)
         nutrient_data = pd.read_csv(NUTRIENT_CSV_PATH)
         food_nutrient_data = pd.read_csv(FOOD_NUTRIENT_CSV_PATH)
@@ -44,13 +44,24 @@ def load_and_preprocess_data():
 
         merged_df = food_nutrient_data.merge(nutrient_data, on='nutrient_id', how='left')
         return True
-    except Exception as e:
-        print(f"Error loading data: {e}")
+    except:
         return False
 
-def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
+def init_worker():
+    global food_df, merged_df
+    try:
+        load_success = load_and_preprocess_data_worker()
+        if not load_success:
+            print(f"Worker {current_process().pid} failed to load data.")
+    except Exception as e:
+        print(f"Worker initialization error: {e}")
+    sys.stdout.flush()
+
+def get_nutrition_info_parallel(ingredient_name: str) -> Optional[tuple[str, Dict[str, Any]]]:
+    global food_df, merged_df
+
     if merged_df is None or food_df is None:
-        return {}
+        return None
 
     choices_list = food_df['description'].tolist()
     best_match = process.extractOne(
@@ -60,24 +71,30 @@ def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
     )
 
     if not best_match or best_match[1] < FUZZY_MATCH_THRESHOLD:
-        return {}
+        return (ingredient_name, {})
 
     food_desc, score = best_match
     fdc_id = food_df.loc[food_df['description'] == food_desc, 'fdc_id'].iloc[0]
     nutrients = merged_df[merged_df['fdc_id'] == fdc_id]
+
     cal = nutrients[nutrients['name'] == 'Energy']['amount'].mean()
     sod = nutrients[nutrients['name'] == 'Sodium, Na']['amount'].mean()
     prot = nutrients[nutrients['name'] == 'Protein']['amount'].mean()
 
-    return {
+    info = {
         'calories': float(cal) if pd.notna(cal) else 0.0,
         'sodium': float(sod) if pd.notna(sod) else 0.0,
         'protein': float(prot) if pd.notna(prot) else 0.0
     }
 
+    return (ingredient_name, info)
+
+def load_and_preprocess_data():
+    print("Loading food csv...")
+    return load_and_preprocess_data_worker()
+
 def create_nutrition_lookup_table(input_df: pd.DataFrame):
     global nutrition_lookup
-
 
     if MAX_INGREDIENTS_PER_ITEM and MAX_INGREDIENTS_PER_ITEM > 0:
         def limit_ingredients(ingredients_str):
@@ -89,21 +106,32 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
     else:
         all_ingredients = input_df['ingredients'].str.split(',').explode().str.strip().dropna().unique()
 
-    for idx, ingredient in enumerate(all_ingredients):
-        if ingredient not in nutrition_lookup:
-            nutrition_lookup[ingredient] = get_nutrition_info(ingredient)
+    unique_ingredients_list = all_ingredients.tolist()
 
-        if (idx + 1) % 50 == 0:
-            print(f"  Processed {idx + 1}/{len(all_ingredients)} unique ingredients...")
+    num_processes = cpu_count()
+
+    try:
+        with Pool(processes=num_processes, initializer=init_worker) as pool:
+            # Use imap_unordered to handle results as they complete
+            for result in pool.imap_unordered(get_nutrition_info_parallel, unique_ingredients_list):
+                if result:
+                    ingredient, info = result
+                    nutrition_lookup[ingredient] = info
+    except Exception as e:
+        print(f"An error occurred during parallel processing, falling back to sequential: {e}")
+        for ingredient in unique_ingredients_list:
+            result = get_nutrition_info_parallel(ingredient)
+            if result:
+                 ingredient, info = result
+                 nutrition_lookup[ingredient] = info
+
 
     successful_matches = len([k for k, v in nutrition_lookup.items() if v])
 
-def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_with_scores.csv'):
-
+def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_parallel.csv'):
     if not load_and_preprocess_data():
         return
 
-    print(f"Reading {input_file}...")
     try:
         df = pd.read_csv(input_file)
     except FileNotFoundError:
@@ -124,6 +152,7 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
 
     ingredients_exploded_df.rename(columns={'level_1': 'menu_item_index', 'ingredients': 'ingredient_name'}, inplace=True)
     ingredients_exploded_df['ingredient_name'] = ingredients_exploded_df['ingredient_name'].str.strip()
+
     lookup_df = pd.DataFrame.from_dict(nutrition_lookup, orient='index').reset_index()
     lookup_df.rename(columns={'index': 'ingredient_name'}, inplace=True)
 
@@ -139,8 +168,7 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
         'item_protein': 'average_protein'
     }, inplace=True)
 
-
-    print("Calculating Healthiness Score V2 (0-100)...")
+    print("Calculating Healthiness Score ")
 
     def calculate_deviation_ratio(ideal, avg_series):
         diff = np.abs(avg_series - ideal)
