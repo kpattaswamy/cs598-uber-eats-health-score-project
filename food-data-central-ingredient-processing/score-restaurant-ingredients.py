@@ -13,6 +13,8 @@ FUZZY_MATCH_THRESHOLD = 75
 DRI_CALORIES = 2000.0
 DRI_SODIUM = 2000.0
 DRI_PROTEIN = 85.0
+MAX_INGREDIENTS_PER_ITEM = 4
+
 IDEAL_CALORIES_PER_MEAL = DRI_CALORIES / 3.0
 IDEAL_SODIUM_PER_MEAL = DRI_SODIUM / 3.0
 IDEAL_PROTEIN_PER_MEAL = DRI_PROTEIN / 3.0
@@ -24,10 +26,11 @@ nutrition_lookup: Dict[str, Dict[str, float]] = {}
 def load_and_preprocess_data():
     global food_df, merged_df
     try:
-        print("Loading food csv")
+        print("Loading food csv...")
         food_data = pd.read_csv(FOOD_CSV_PATH)
         nutrient_data = pd.read_csv(NUTRIENT_CSV_PATH)
         food_nutrient_data = pd.read_csv(FOOD_NUTRIENT_CSV_PATH)
+
         food_data.columns = food_data.columns.str.lower().str.strip()
         nutrient_data.columns = nutrient_data.columns.str.lower().str.strip()
         food_nutrient_data.columns = food_nutrient_data.columns.str.lower().str.strip()
@@ -43,6 +46,7 @@ def load_and_preprocess_data():
         merged_df = food_nutrient_data.merge(nutrient_data, on='nutrient_id', how='left')
         return True
     except Exception as e:
+        print(f"Error loading data: {e}")
         return False
 
 def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
@@ -77,7 +81,16 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
 
     start_time = time.time()
 
-    all_ingredients = input_df['ingredients'].str.split(',').explode().str.strip().dropna().unique()
+    if MAX_INGREDIENTS_PER_ITEM and MAX_INGREDIENTS_PER_ITEM > 0:
+        def limit_ingredients(ingredients_str):
+            if pd.isna(ingredients_str):
+                return []
+            return [x.strip() for x in str(ingredients_str).split(',') if x.strip()][:MAX_INGREDIENTS_PER_ITEM]
+
+        all_ingredients = input_df['ingredients'].apply(limit_ingredients).explode().dropna().unique()
+    else:
+        all_ingredients = input_df['ingredients'].str.split(',').explode().str.strip().dropna().unique()
+
     for idx, ingredient in enumerate(all_ingredients):
         if ingredient not in nutrition_lookup:
             nutrition_lookup[ingredient] = get_nutrition_info(ingredient)
@@ -86,8 +99,9 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
             print(f"  Processed {idx + 1}/{len(all_ingredients)} unique ingredients...")
 
     end_time = time.time()
+    successful_matches = len([k for k, v in nutrition_lookup.items() if v])
 
-def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_v2.csv'):
+def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_with_scores.csv'):
 
     main_start_time = time.time()
 
@@ -103,38 +117,28 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
 
     create_nutrition_lookup_table(df)
 
-    item_stats = []
+    vector_start_time = time.time()
 
-    for idx, row in df.iterrows():
-        ingredients_str = str(row['ingredients'])
-        ingredients = [x.strip() for x in ingredients_str.split(',') if x.strip()]
+    if MAX_INGREDIENTS_PER_ITEM and MAX_INGREDIENTS_PER_ITEM > 0:
+        def split_and_limit(ingredients_str):
+            if pd.isna(ingredients_str):
+                return []
+            return [x.strip() for x in str(ingredients_str).split(',') if x.strip()][:MAX_INGREDIENTS_PER_ITEM]
 
-        i_cals, i_sods, i_prots = [], [], []
+        ingredients_exploded_df = df.set_index(['restaurant_id', df.index]).ingredients.apply(split_and_limit).explode().reset_index()
+    else:
+        ingredients_exploded_df = df.set_index(['restaurant_id', df.index]).ingredients.str.split(',').explode().reset_index()
 
-        for ing in ingredients:
-            info = nutrition_lookup.get(ing, {})
-            if info:
-                i_cals.append(info['calories'])
-                i_sods.append(info['sodium'])
-                i_prots.append(info['protein'])
+    ingredients_exploded_df.rename(columns={'level_1': 'menu_item_index', 'ingredients': 'ingredient_name'}, inplace=True)
+    ingredients_exploded_df['ingredient_name'] = ingredients_exploded_df['ingredient_name'].str.strip()
+    lookup_df = pd.DataFrame.from_dict(nutrition_lookup, orient='index').reset_index()
+    lookup_df.rename(columns={'index': 'ingredient_name'}, inplace=True)
 
-        avg_cal = sum(i_cals) / len(i_cals) if i_cals else None
-        avg_sod = sum(i_sods) / len(i_sods) if i_sods else None
-        avg_prot = sum(i_prots) / len(i_prots) if i_prots else None
+    merged_ingredients_df = ingredients_exploded_df.merge(lookup_df, on='ingredient_name', how='left')
 
-        item_stats.append({
-            'restaurant_id': row['restaurant_id'],
-            'item_calories': avg_cal,
-            'item_sodium': avg_sod,
-            'item_protein': avg_prot
-        })
+    item_averages_df = merged_ingredients_df.groupby(['restaurant_id', 'menu_item_index']).mean(numeric_only=True).reset_index()
 
-        if (idx + 1) % 500 == 0:
-            print(f"  Processed {idx + 1} items...")
-
-    items_df = pd.DataFrame(item_stats)
-
-    final_df = items_df.groupby('restaurant_id').mean().reset_index()
+    final_df = item_averages_df.groupby('restaurant_id').mean(numeric_only=True).reset_index()
 
     final_df.rename(columns={
         'item_calories': 'average_calories',
@@ -142,9 +146,12 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
         'item_protein': 'average_protein'
     }, inplace=True)
 
+    vector_end_time = time.time()
+
+    print("Calculating Healthiness Score V2 (0-100)...")
+
     def calculate_deviation_ratio(ideal, avg_series):
         diff = np.abs(avg_series - ideal)
-
         ratio_raw = np.where(
             (avg_series.values > 0) & np.isfinite(avg_series.values),
             1.0 - (diff / ideal),
@@ -161,10 +168,15 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
         0.0
     )
     final_df['ratio_prot'] = np.minimum(1.0, ratio_prot_raw)
+
     final_df['avg_ratios'] = final_df[['ratio_cal', 'ratio_sod', 'ratio_prot']].mean(axis=1)
     final_df['healthiness_score'] = (final_df['avg_ratios'] * 100).round(2)
-    final_df.drop(columns=['ratio_cal', 'ratio_sod', 'ratio_prot', 'avg_ratios'], inplace=True)
+
+    final_df.drop(columns=['menu_item_index', 'ratio_cal', 'ratio_sod', 'ratio_prot', 'avg_ratios'], inplace=True, errors='ignore')
+
     final_df.to_csv(output_file, index=False)
+
+    main_end_time = time.time()
 
     print("\nFinal Restaurant Averages and Healthiness Scores:")
     print(final_df.head(10))
