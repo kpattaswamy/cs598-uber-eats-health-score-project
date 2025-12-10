@@ -23,7 +23,7 @@
 python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
 
 
-e.g. python3 build-prompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
+e.g. python3 menu_description/buildPrompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
 ```
 
 The output csv schema contains two columns: `restaurant_id`, `summary`. Wrap the `summary` in a prompt asking a question to the LLM in order to fetch the healthiness score rated by the LLM. The `restaurant_id` can then be used to stitch together the healthiness score with the dataset.

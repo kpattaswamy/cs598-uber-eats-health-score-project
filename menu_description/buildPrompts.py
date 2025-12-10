@@ -1,10 +1,15 @@
 import pandas as pd
 import argparse
 
+STATE = "DC"
+
 def gen_prompts(menus_path, restaurants_path, output_path):
     menus = pd.read_csv(menus_path)
     restaurants = pd.read_csv(restaurants_path)
-
+    restaurants['state'] = restaurants['full_address'].str.split(', ').str[-2]
+    
+    restaurants = restaurants[restaurants['state'] == STATE].copy()
+    
     menus['price_float'] = menus['price'].str.replace(' USD', '', regex=False).astype(float)
 
     category_stats = menus.groupby(['restaurant_id', 'category']).agg(
@@ -19,6 +24,8 @@ def gen_prompts(menus_path, restaurants_path, output_path):
         right_on='id',
         how='left'
     )
+
+    merged_df.dropna(subset=['id'], inplace=True)
 
     output_rows = []
     for restaurant_id, group in merged_df.groupby('restaurant_id'):
