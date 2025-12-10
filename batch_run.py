@@ -3,7 +3,7 @@ import ollama
 import re
 
 # --- CONFIGURATION ---
-INPUT_FILE = 'prompts.csv'       # Use 'prompts_test.csv' for testing!
+INPUT_FILE = 'prompts-truncated.csv'       # Use 'prompts_test.csv' for testing!
 OUTPUT_FILE = 'prompts_with_scores.csv'
 INPUT_COL = 'summary'
 OUTPUT_COL = 'nutrition_score'
@@ -70,8 +70,7 @@ def process_csv():
         )
         # ------------------------------------------------
 
-        if index % 10 == 0:
-             print(f"Processing row {index+1}/{total}...")
+        print(f"Processing row {index+1}/{total}...")
 
         try:
             response = ollama.chat(model=MODEL, messages=[
