@@ -8,8 +8,6 @@ OUTPUT_FILE = 'restaurants_with_ingredients.csv'
 INPUT_COL = 'name_menu'
 OUTPUT_COL = 'ingredients'
 MODEL = 'llama3.2:3b-instruct-q8_0'
-
-
 STATE = "DC"
 
 def process_data():
