@@ -2,22 +2,37 @@
 
 ## Setup datasets locally
 
+Uber Eats Data
+
 1. `mkdir datasets`
 2. `cd datasets/`
 3. Download datasets from: `https://www.kaggle.com/datasets/ahmedshahriarsakib/uber-eats-usa-restaurants-menus?resource=download`
-4. `mkdir food_data`
-5. `cd food_data/`
-6. Go to `https://fdc.nal.usda.gov/download-datasets` and download from Latest Downloads: Branded (most recent month) (most recent year) CSV
-   - ex: Branded April 2025 (CSV)
-   - necessary files: food.csv, nutrient.csv, food_nutrient
+
+USDA Datasets
+
+1. `mkdir datasets/food_data`
+2. `cd datasets/food_data`
+3. Go to `https://fdc.nal.usda.gov/download-datasets` and download from Latest Downloads: Branded (most recent month) (most recent year) CSV
+
+- ex: Branded April 2025 (CSV)
+- necessary files: food.csv, nutrient.csv, food_nutrient
 
 ## Install requirements
 
+Python Libraries
 `pip3 install -r requirements.txt`
 
-## Usage
+Ollama Setup
 
-### Generate prompts to feed the LLM
+1. `brew install ollama`
+2. `brew services start ollama`
+3. `ollama pull llama3.2:3b-instruct-q8_0`
+
+## Workflows
+
+### Nutrition Score from Restaurant Menu Description
+
+1. Generate Prompts
 
 ```
 python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
@@ -26,4 +41,14 @@ python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <p
 e.g. python3 menu_description/buildPrompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
 ```
 
-The output csv schema contains two columns: `restaurant_id`, `summary`. Wrap the `summary` in a prompt asking a question to the LLM in order to fetch the healthiness score rated by the LLM. The `restaurant_id` can then be used to stitch together the healthiness score with the dataset.
+2. python batch_menu_run.py
+
+3. Examine output in `nutrition_scores_from_menu.csv`
+
+### Nutrition Score from Restaurant Menu Description
+
+1. Generate ingredients: `python batch_gen_ingredients.py`
+
+2. TBD
+3. TBD
+4. TBD
