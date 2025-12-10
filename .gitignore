@@ -3,3 +3,5 @@ datasets/**/*.csv
 food_data/**/*.csv
 .DS_Store
 venv/
+analysis/cost_analysis_results.csv
+analysis/figures/**
