@@ -1,86 +1,149 @@
 import pandas as pd
-import ollama
-import re
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+from typing import List, Dict, Any, Optional
 
-# --- CONFIGURATION ---
-INPUT_FILE = 'prompts-truncated.csv'       # Switch this to 'prompts_test.csv' if testing
-OUTPUT_FILE = 'prompts_with_scores.csv'
-INPUT_COL = 'summary'
-OUTPUT_COL = 'nutrition_score'
-MODEL = 'tinyllama'
-# ---------------------
+FOOD_CSV_PATH = 'datasets/food_data/food.csv'
+NUTRIENT_CSV_PATH = 'datasets/food_data/nutrient.csv'
+FOOD_NUTRIENT_CSV_PATH = 'datasets/food_data/food_nutrient.csv'
 
-def extract_score(text):
+FUZZY_MATCH_THRESHOLD = 75 # TODO: Adjust threshold as needed
+
+food_df: Optional[pd.DataFrame] = None
+merged_df: Optional[pd.DataFrame] = None
+
+def load_and_preprocess_data():
     """
-    Finds the first integer between 0 and 100 in the text.
+    Loads, cleans, and merges the necessary CSV data into global DataFrames.
+    Returns True if successful, False otherwise.
     """
-    matches = re.findall(r'\d+', text)
-    if matches:
-        for match in matches:
-            val = int(match)
-            if 0 <= val <= 100:
-                return val
-    return None
-
-def process_csv():
-    print(f"Reading {INPUT_FILE}...")
+    global food_df, merged_df
     try:
-        df = pd.read_csv(INPUT_FILE)
-    except FileNotFoundError:
-        print(f"Error: {INPUT_FILE} not found.")
-        return
+        print("Loading data...")
+        food_data = pd.read_csv(FOOD_CSV_PATH)
+        nutrient_data = pd.read_csv(NUTRIENT_CSV_PATH)
+        food_nutrient_data = pd.read_csv(FOOD_NUTRIENT_CSV_PATH)
 
-    if INPUT_COL not in df.columns:
-        print(f"Error: Column '{INPUT_COL}' not found.")
-        return
+        food_data.columns = food_data.columns.str.lower().str.strip()
+        nutrient_data.columns = nutrient_data.columns.str.lower().str.strip()
+        food_nutrient_data.columns = food_nutrient_data.columns.str.lower().str.strip()
 
-    scores = []
-    
-    print(f"Starting analysis with {MODEL}...")
-
-    total = len(df)
-    for index, row in df.iterrows():
-        menu_summary = str(row[INPUT_COL])
+        food_df = food_data[['fdc_id', 'description']]
         
-        # --- UPDATED PROMPT ---
-        prompt = (
-            f"You are a nutrition expert. Evaluate the menu items for this restaurant to assign a holistic health score "
-            f"from 0 (extremely unhealthy) to 100 (extremely healthy). "
-            f"A score of 50 represents an average restaurant with mixed options.\n\n"
-            f"Instructions:\n"
-            f"1. IGNORE all price information. Focus ONLY on the food categories and items.\n"
-            f"2. Consider the balance of nutrients (vegetables vs. fried foods vs. sugar).\n"
-            f"3. Respond with ONLY the numeric score (e.g., 65).\n\n"
-            f"Menu Data: {menu_summary}"
-        )
-        # ----------------------
+        food_df['description'] = food_df['description'].fillna('').astype(str)
+        
+        nutrient_data = nutrient_data[['id', 'name', 'unit_name']]
+        nutrient_data.rename(columns={'id': 'nutrient_id'}, inplace=True)
+        
+        food_nutrient_data = food_nutrient_data[['fdc_id', 'nutrient_id', 'amount']]
 
-        # Progress log every 1 row (since you are testing small batches now)
-        if index % 1 == 0:
-             print(f"Processing row {index+1}/{total}...")
+        merged_df = food_nutrient_data.merge(nutrient_data, on='nutrient_id', how='left')
+        print("Data loaded and preprocessed successfully.")
+        return True
+    
+    except FileNotFoundError as e:
+        print(f"\n--- ERROR: FILE NOT FOUND ---")
+        print(f"The required CSV file was not found: {e.filename}")
+        print(f"Please ensure '{e.filename}' is in the correct directory.")
+        print(f"-----------------------------\n")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred during data loading: {e}")
+        return False
 
-        try:
-            response = ollama.chat(model=MODEL, messages=[
-                {'role': 'user', 'content': prompt},
-            ])
-            
-            raw_text = response['message']['content']
-            score = extract_score(raw_text)
-            
-            # Default to None if no number found, or you could use 50 as a neutral fallback
-            final_score = score if score is not None else -1
-            scores.append(final_score)
-            
-        except Exception as e:
-            print(f"Error on row {index}: {e}")
-            scores.append(-1)
 
-    # Assign the new column
-    df[OUTPUT_COL] = scores
+def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
+    """
+    Performs a fuzzy search on food descriptions and outputs nutrition information 
+    for the best match.
 
-    # Save to CSV (The 'raw_response' column is gone)
-    df.to_csv(OUTPUT_FILE, index=False)
-    print(f"\nDone! Results saved to {OUTPUT_FILE}")
+    Args:
+        ingredient_name: The name of the ingredient to search for.
 
-if __name__ == "__main__":
-    process_csv()
+    Returns:
+        A dictionary containing the search results, match details, and nutrition facts.
+    """
+    if merged_df is None or food_df is None:
+        return {
+            "error": "Data not initialized.",
+            "message": "Please call load_and_preprocess_data() and ensure all CSV files are present and correct."
+        }
+
+    food_descriptions = food_df['description'].tolist()
+    
+    best_match_result: Optional[tuple] = process.extractOne(
+        query=ingredient_name, 
+        choices=food_descriptions, 
+        scorer=fuzz.ratio
+    )
+
+    if not best_match_result:
+        return {
+            "search_query": ingredient_name,
+            "error": "No food data found to search against."
+        }
+        
+    food_description, similarity_score = best_match_result
+
+    if similarity_score < FUZZY_MATCH_THRESHOLD:
+        return {
+            "search_query": ingredient_name,
+            "error": "No close match found.",
+            "message": f"Best match '{food_description}' only had a similarity score of {similarity_score}, which is below the threshold of {FUZZY_MATCH_THRESHOLD}."
+        }
+
+    # Find the fdc_id for the matched description
+    fdc_id = food_df[food_df['description'] == food_description]['fdc_id'].iloc[0]
+
+    nutrition_data = merged_df[merged_df['fdc_id'] == fdc_id]
+
+    if nutrition_data.empty:
+        return {
+            "search_query": ingredient_name,
+            "matched_food": food_description,
+            "fdc_id": int(fdc_id),
+            "match_score": similarity_score,
+            "error": "No nutrition data available for this food item."
+        }
+
+    nutrition_list = []
+    for _, row in nutrition_data.iterrows():
+        amount = row['amount']
+        
+        nutrition_list.append({
+            "nutrient_name": row['name'],
+            "amount": float(amount) if pd.notna(amount) and amount is not None else 0.0,
+            "unit": row['unit_name']
+        })
+
+    nutrition_list.sort(key=lambda x: x['nutrient_name'])
+
+    return {
+        "search_query": ingredient_name,
+        "matched_food": food_description,
+        "fdc_id": int(fdc_id),
+        "match_score": similarity_score,
+        "nutrition_facts": nutrition_list
+    }
+
+''' 
+# Example usage 
+if __name__ == '__main__':
+    if load_and_preprocess_data():
+        
+        search_term_1 = "aple"
+        print(f"\n--- Searching for: '{search_term_1}' ---")
+        result_1 = get_nutrition_info(search_term_1)
+        print(result_1)
+
+        search_term_2 = "chocolate milk" 
+        print(f"\n--- Searching for: '{search_term_2}' ---")
+        result_2 = get_nutrition_info(search_term_2)
+        print(result_2)
+        
+        # A term that shouldn't meet the threshold
+        search_term_3 = "asdnasdioejqoiwejqw"
+        print(f"\n--- Searching for: '{search_term_3}' ---")
+        result_3 = get_nutrition_info(search_term_3)
+        print(result_3)
+'''
