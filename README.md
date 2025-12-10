@@ -50,3 +50,4 @@ e.g. python3 uber-eats-menu-processing//buildPrompts.py --menus datasets/restaur
 
 ## Analyze Results
 1. `similarity.py`
+2. `cost_analysis.py`
