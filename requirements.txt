@@ -2,3 +2,5 @@ pandas
 argparse
 fuzzywuzzy
 python-Levenshtein
+seaborn
+matplotlib.pyplot
