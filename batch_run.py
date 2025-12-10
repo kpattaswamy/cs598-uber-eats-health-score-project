@@ -1,6 +1,8 @@
 import pandas as pd
 import ollama
 import re
+import time
+from datetime import datetime
 
 # --- CONFIGURATION ---
 INPUT_FILE = 'prompts-truncated.csv'       # Use 'prompts_test.csv' for testing!
@@ -8,32 +10,32 @@ OUTPUT_FILE = 'prompts_with_scores.csv'
 INPUT_COL = 'summary'
 OUTPUT_COL = 'nutrition_score'
 # MODEL = 'tinyllama'
-MODEL = 'llama3.2'
+MODEL = 'llama3.2:3b-instruct-q8_0'
 # ---------------------
 
 def extract_score(text):
     """
-    Robust extraction:
-    1. Looks specifically for "SCORE: <number>" (case insensitive).
-    2. If that fails, looks for the LAST number in the text (0-100).
+    Extract score from response. Expects only a number (0-100).
+    Strips whitespace and converts to integer.
     """
-    # STRATEGY 1: Look for the specific label we asked for
-    # Matches "SCORE: 85", "Score: 85", "Score:85", etc.
-    match = re.search(r'SCORE:\s*(\d+)', text, re.IGNORECASE)
-    if match:
-        val = int(match.group(1))
+    # Strip whitespace and try to convert directly
+    text = text.strip()
+    
+    # Try direct conversion first (if response is just "35")
+    try:
+        val = int(text)
         if 0 <= val <= 100:
             return val
-
-    # STRATEGY 2: Fallback - use the LAST number found
-    # (Models often explain first, then give the score at the end)
+    except ValueError:
+        pass
+    
+    # Fallback: extract first valid number (0-100) from the text
     matches = re.findall(r'\d+', text)
     if matches:
-        # Filter for valid 0-100 numbers first
-        valid_scores = [int(m) for m in matches if 0 <= int(m) <= 100]
-        if valid_scores:
-            # Return the last one found (most likely the conclusion)
-            return valid_scores[-1]
+        for match in matches:
+            val = int(match)
+            if 0 <= val <= 100:
+                return val
             
     return None
 
@@ -57,20 +59,21 @@ def process_csv():
     for index, row in df.iterrows():
         menu_summary = str(row[INPUT_COL])
         
-        # --- UPDATED PROMPT (Added strict formatting) ---
+        # --- UPDATED PROMPT (Strict: only return the number) ---
         prompt = (
             f"You are a nutrition expert. Evaluate the menu items for this restaurant to assign a holistic health score "
             f"from 0 (extremely unhealthy) to 100 (extremely healthy).\n\n"
             f"Instructions:\n"
             f"1. IGNORE price. Focus on nutrient balance (veggies vs. sugar/fryer).\n"
             f"2. A score of 50 is average.\n"
-            f"3. IMPORTANT: You must end your response with exactly 'SCORE: ' followed by the number.\n"
-            f"   Example: '...therefore the healthy options are limited. SCORE: 45'\n\n"
+            f"3. CRITICAL: Your response must contain ONLY the numeric score (0-100) with no other text, explanation, or formatting.\n"
             f"Menu Data: {menu_summary}"
         )
         # ------------------------------------------------
 
-        print(f"Processing row {index+1}/{total}...")
+        start_time = time.time()
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] Processing row {index+1}/{total}...", end="", flush=True)
 
         try:
             response = ollama.chat(model=MODEL, messages=[
@@ -84,8 +87,12 @@ def process_csv():
             final_score = score if score is not None else -1
             scores.append(final_score)
             
+            elapsed = time.time() - start_time
+            print(f" Done in {elapsed:.2f}s (score: {final_score})")
+            
         except Exception as e:
-            print(f"Error on row {index}: {e}")
+            elapsed = time.time() - start_time
+            print(f" Error after {elapsed:.2f}s: {e}")
             scores.append(-1)
 
     df[OUTPUT_COL] = scores
