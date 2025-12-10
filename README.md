@@ -30,25 +30,22 @@ Ollama Setup
 
 ## Workflows
 
-### Nutrition Score from Restaurant Menu Description
+### Nutrition Score from Uber Eats Menu Descriptions
 
 1. Generate Prompts
 
 ```
-python3 build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
+python3 uber-eats-menu-processing/build-prompts.py --menus <path to restaurant-menus.csv> --restaurants <path to restaurants.csv> --output <path to store output>
 
 
-e.g. python3 menu_description/buildPrompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
+e.g. python3 uber-eats-menu-processing//buildPrompts.py --menus datasets/restaurant-menus.csv --restaurants datasets/restaurants.csv --output prompts.csv
 ```
 
-2. python batch_menu_run.py
+2. `ollama-helpers/python batch_menu_run.py`
+    Examine output in `prompts_with_scores.csv`
 
-3. Examine output in `nutrition_scores_from_menu.csv`
-
-### Nutrition Score from Restaurant Menu Description
-
+### Nutrition Score from Uber Eats Menu Descriptions along with ingredient details from Food Data Central Branded
 1. Generate ingredients: `python batch_gen_ingredients.py`
-
 2. TBD
 3. TBD
 4. TBD
