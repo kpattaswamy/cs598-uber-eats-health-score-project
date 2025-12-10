@@ -44,8 +44,9 @@ e.g. python3 uber-eats-menu-processing//buildPrompts.py --menus datasets/restaur
 2. `ollama-helpers/python batch_menu_run.py`
     Examine output in `prompts_with_scores.csv`
 
-### Nutrition Score from Uber Eats Menu Descriptions along with ingredient details from Food Data Central Branded
-1. Generate ingredients: `python batch_gen_ingredients.py`
-2. TBD
-3. TBD
-4. TBD
+### Nutrition Score from Uber Eats Menu Descriptions along with ingredient details from USDA
+1. Generate ingredients for each menu item at each restaurant: `python3 batch_gen_ingredients.py`
+2. Score the restaurant given the ingredient list from each menu item: `python3 score-restaurant-ingredients.py`
+
+## Analyze Results
+1. `similarity.py`
