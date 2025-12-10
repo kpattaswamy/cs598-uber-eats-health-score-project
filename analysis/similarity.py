@@ -14,8 +14,8 @@ def compare_restaurant_scores(file_path_1, file_path_2, score_column_file1='nutr
             return
 
         plt.figure(figsize=(10, 6))
-        sns.kdeplot(df1[score_column_file1], label='Dataset 1 Scores', fill=True, alpha=0.5, linewidth=2)
-        sns.kdeplot(df2[score_column_file2], label='Dataset 2 Scores', fill=True, alpha=0.5, linewidth=2)
+        sns.kdeplot(df1[score_column_file1], label='uber_eats_menu_with_scores', fill=True, alpha=0.5, linewidth=2)
+        sns.kdeplot(df2[score_column_file2], label='uber_eats_menu_with_ingredients_scores', fill=True, alpha=0.5, linewidth=2)
 
         title = f'Comparison of scores between the datasets'
         plt.title(title, fontsize=16)
