@@ -14,6 +14,8 @@ def process_data():
     print(f"Reading {MENU_FILE} and {RESTAURANT_FILE}...")
     try:
         restaurant_menus_df = pd.read_csv(MENU_FILE)
+        restaurant_menus_df = restaurant_menus_df.drop_duplicates(subset=['restaurant_id', 'category'], keep='first')
+
         restaurants = pd.read_csv(RESTAURANT_FILE)
         restaurants['state'] = restaurants['full_address'].str.split(', ').str[-2]
         restaurants = restaurants[restaurants['state'] == STATE].copy()
