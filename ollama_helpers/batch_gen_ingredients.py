@@ -1,12 +1,12 @@
 import pandas as pd
 import ollama
 
-MENU_FILE = 'restaurant-menus.csv'
-RESTAURANT_FILE = 'restaurants.csv'
+MENU_FILE = 'datasets/restaurant-menus.csv'
+RESTAURANT_FILE = 'datasets/restaurants.csv'
 OUTPUT_FILE = 'restaurants_with_ingredients.csv'
 INPUT_COL = 'description'
 OUTPUT_COL = 'ingredients'
-MODEL = 'llama3.2'
+MODEL = 'llama3.2:3b-instruct-q8_0'
 
 
 STATE = "DC"
