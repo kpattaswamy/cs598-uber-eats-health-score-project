@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # --- CONFIGURATION ---
-INPUT_FILE = 'prompts-truncated.csv'       # Use 'prompts_test.csv' for testing!
+INPUT_FILE = 'prompts-30.csv'       # Use 'prompts_test.csv' for testing!
 OUTPUT_FILE = 'prompts_with_scores.csv'
 INPUT_COL = 'summary'
 OUTPUT_COL = 'nutrition_score'
@@ -15,13 +15,15 @@ MODEL = 'llama3.2:3b-instruct-q8_0'
 
 def extract_score(text):
     """
-    Extract score from response. Expects only a number (0-100).
-    Strips whitespace and converts to integer.
+    Extract score from response. More robust extraction that handles various formats.
     """
-    # Strip whitespace and try to convert directly
+    if not text:
+        return None
+    
+    # Strip whitespace and newlines
     text = text.strip()
     
-    # Try direct conversion first (if response is just "35")
+    # Strategy 1: Direct conversion (if response is just "35" or "35\n")
     try:
         val = int(text)
         if 0 <= val <= 100:
@@ -29,7 +31,29 @@ def extract_score(text):
     except ValueError:
         pass
     
-    # Fallback: extract first valid number (0-100) from the text
+    # Strategy 2: Look for number at the start of the line (common pattern)
+    first_line = text.split('\n')[0].strip()
+    match = re.match(r'^\s*(\d+)\s*$', first_line)
+    if match:
+        val = int(match.group(1))
+        if 0 <= val <= 100:
+            return val
+    
+    # Strategy 3: Look for "score: X" or "score is X" pattern (case insensitive)
+    score_patterns = [
+        r'score\s*:?\s*(\d+)',
+        r'score\s+is\s+(\d+)',
+        r'health\s+score\s*:?\s*(\d+)',
+        r'rating\s*:?\s*(\d+)',
+    ]
+    for pattern in score_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            val = int(match.group(1))
+            if 0 <= val <= 100:
+                return val
+    
+    # Strategy 4: Extract all numbers and find the first valid one (0-100)
     matches = re.findall(r'\d+', text)
     if matches:
         for match in matches:
@@ -59,15 +83,13 @@ def process_csv():
     for index, row in df.iterrows():
         menu_summary = str(row[INPUT_COL])
         
-        # --- UPDATED PROMPT (Strict: only return the number) ---
+        # --- SIMPLIFIED PROMPT (Optimized for speed) ---
         prompt = (
-            f"You are a nutrition expert. Evaluate the menu items for this restaurant to assign a holistic health score "
-            f"from 0 (extremely unhealthy) to 100 (extremely healthy).\n\n"
-            f"Instructions:\n"
-            f"1. IGNORE price. Focus on nutrient balance (veggies vs. sugar/fryer).\n"
-            f"2. A score of 50 is average.\n"
-            f"3. CRITICAL: Your response must contain ONLY the numeric score (0-100) with no other text, explanation, or formatting.\n"
-            f"Menu Data: {menu_summary}"
+            f"Rate restaurant healthiness 0-100. Ignore price. Consider: vegetables, whole grains, lean proteins vs fried/sugary/processed foods. "
+            f"0-20=very unhealthy, 21-40=unhealthy, 41-60=average, 61-80=healthy, 81-100=very healthy. "
+            f"Respond with ONLY a number 0-100.\n\n"
+            f"{menu_summary}\n\n"
+            f"Score:"
         )
         # ------------------------------------------------
 
@@ -77,6 +99,10 @@ def process_csv():
 
         try:
             response = ollama.chat(model=MODEL, messages=[
+                {
+                    'role': 'system',
+                    'content': 'Respond with ONLY a number 0-100. No text.'
+                },
                 {'role': 'user', 'content': prompt},
             ])
             
@@ -88,7 +114,11 @@ def process_csv():
             scores.append(final_score)
             
             elapsed = time.time() - start_time
-            print(f" Done in {elapsed:.2f}s (score: {final_score})")
+            if final_score == -1:
+                # Log the raw response when extraction fails for debugging
+                print(f" Done in {elapsed:.2f}s (score: {final_score}) [Failed to extract - raw response: '{raw_text[:100]}...']")
+            else:
+                print(f" Done in {elapsed:.2f}s (score: {final_score})")
             
         except Exception as e:
             elapsed = time.time() - start_time
