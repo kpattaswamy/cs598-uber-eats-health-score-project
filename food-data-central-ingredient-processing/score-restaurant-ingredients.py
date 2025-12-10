@@ -3,7 +3,6 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 from typing import List, Dict, Any, Optional
 import numpy as np
-import time
 
 FOOD_CSV_PATH = 'datasets/food_data/food.csv'
 NUTRIENT_CSV_PATH = 'datasets/food_data/nutrient.csv'
@@ -79,7 +78,6 @@ def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
 def create_nutrition_lookup_table(input_df: pd.DataFrame):
     global nutrition_lookup
 
-    start_time = time.time()
 
     if MAX_INGREDIENTS_PER_ITEM and MAX_INGREDIENTS_PER_ITEM > 0:
         def limit_ingredients(ingredients_str):
@@ -98,12 +96,9 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
         if (idx + 1) % 50 == 0:
             print(f"  Processed {idx + 1}/{len(all_ingredients)} unique ingredients...")
 
-    end_time = time.time()
     successful_matches = len([k for k, v in nutrition_lookup.items() if v])
 
 def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_with_scores.csv'):
-
-    main_start_time = time.time()
 
     if not load_and_preprocess_data():
         return
@@ -116,8 +111,6 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
         return
 
     create_nutrition_lookup_table(df)
-
-    vector_start_time = time.time()
 
     if MAX_INGREDIENTS_PER_ITEM and MAX_INGREDIENTS_PER_ITEM > 0:
         def split_and_limit(ingredients_str):
@@ -146,7 +139,6 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
         'item_protein': 'average_protein'
     }, inplace=True)
 
-    vector_end_time = time.time()
 
     print("Calculating Healthiness Score V2 (0-100)...")
 
@@ -176,7 +168,6 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
 
     final_df.to_csv(output_file, index=False)
 
-    main_end_time = time.time()
 
     print("\nFinal Restaurant Averages and Healthiness Scores:")
     print(final_df.head(10))
