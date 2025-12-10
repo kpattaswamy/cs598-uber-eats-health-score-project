@@ -4,3 +4,4 @@ fuzzywuzzy
 python-Levenshtein
 seaborn
 matplotlib.pyplot
+ollama

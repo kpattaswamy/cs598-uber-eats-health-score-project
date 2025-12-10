@@ -130,7 +130,6 @@ def get_nutrition_info(ingredient_name: str) -> Dict[str, Any]:
 # Example usage 
 if __name__ == '__main__':
     if load_and_preprocess_data():
-        
         search_term_1 = "aple"
         print(f"\n--- Searching for: '{search_term_1}' ---")
         result_1 = get_nutrition_info(search_term_1)
