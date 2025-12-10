@@ -3,27 +3,38 @@ import ollama
 import re
 
 # --- CONFIGURATION ---
-INPUT_FILE = 'prompts-truncated.csv'     
+INPUT_FILE = 'prompts.csv'       # Use 'prompts_test.csv' for testing!
 OUTPUT_FILE = 'prompts_with_scores.csv'
-INPUT_COL = 'summary'          # The column containing the menu text
-OUTPUT_COL = 'nutrition_score' # The new column for the score
-MODEL = 'tinyllama'            
+INPUT_COL = 'summary'
+OUTPUT_COL = 'nutrition_score'
+# MODEL = 'tinyllama'
+MODEL = 'llama3.2'
 # ---------------------
 
 def extract_score(text):
     """
-    Tries to find a number between 0-100 in the response text.
-    Returns the first valid number found, or None if it fails.
+    Robust extraction:
+    1. Looks specifically for "SCORE: <number>" (case insensitive).
+    2. If that fails, looks for the LAST number in the text (0-100).
     """
-    # Look for one or more digits
+    # STRATEGY 1: Look for the specific label we asked for
+    # Matches "SCORE: 85", "Score: 85", "Score:85", etc.
+    match = re.search(r'SCORE:\s*(\d+)', text, re.IGNORECASE)
+    if match:
+        val = int(match.group(1))
+        if 0 <= val <= 100:
+            return val
+
+    # STRATEGY 2: Fallback - use the LAST number found
+    # (Models often explain first, then give the score at the end)
     matches = re.findall(r'\d+', text)
     if matches:
-        # Take the last number found (often the most conclusive one if it lists criteria)
-        # or just the first one. Let's try the first distinct number that is <= 100
-        for match in matches:
-            val = int(match)
-            if 0 <= val <= 100:
-                return val
+        # Filter for valid 0-100 numbers first
+        valid_scores = [int(m) for m in matches if 0 <= int(m) <= 100]
+        if valid_scores:
+            # Return the last one found (most likely the conclusion)
+            return valid_scores[-1]
+            
     return None
 
 def process_csv():
@@ -34,31 +45,33 @@ def process_csv():
         print(f"Error: {INPUT_FILE} not found.")
         return
 
-    # Check if summary column exists
     if INPUT_COL not in df.columns:
-        print(f"Error: Column '{INPUT_COL}' not found. Available columns: {list(df.columns)}")
+        print(f"Error: Column '{INPUT_COL}' not found.")
         return
 
     scores = []
-    explanations = [] # Optional: Capture the raw text just in case the parsing fails
-
-    print(f"Starting analysis with {MODEL}. This may take a while depending on row count...")
     
+    print(f"Starting analysis with {MODEL}...")
+
     total = len(df)
     for index, row in df.iterrows():
         menu_summary = str(row[INPUT_COL])
         
-        # Construct a strict prompt for TinyLlama
+        # --- UPDATED PROMPT (Added strict formatting) ---
         prompt = (
-            f"You are a strict nutrition expert. "
-            f"Evaluate the healthiness of this restaurant based on its menu categories and items. "
-            f"Assign a health score from 0 (very unhealthy) to 100 (very healthy). "
-            f"IMPORTANT: Respond with ONLY the numeric score. Do not write any other words.\n\n"
-            f"Restaurant Menu: {menu_summary}"
+            f"You are a nutrition expert. Evaluate the menu items for this restaurant to assign a holistic health score "
+            f"from 0 (extremely unhealthy) to 100 (extremely healthy).\n\n"
+            f"Instructions:\n"
+            f"1. IGNORE price. Focus on nutrient balance (veggies vs. sugar/fryer).\n"
+            f"2. A score of 50 is average.\n"
+            f"3. IMPORTANT: You must end your response with exactly 'SCORE: ' followed by the number.\n"
+            f"   Example: '...therefore the healthy options are limited. SCORE: 45'\n\n"
+            f"Menu Data: {menu_summary}"
         )
+        # ------------------------------------------------
 
-        if index % 5 == 0:
-            print(f"Processing row {index+1}/{total}...")
+        if index % 10 == 0:
+             print(f"Processing row {index+1}/{total}...")
 
         try:
             response = ollama.chat(model=MODEL, messages=[
@@ -68,25 +81,17 @@ def process_csv():
             raw_text = response['message']['content']
             score = extract_score(raw_text)
             
-            # If extracting failed, store -1 or keep empty
+            # If we still can't find a score, use -1 to indicate error
             final_score = score if score is not None else -1
-            
             scores.append(final_score)
-            explanations.append(raw_text) # Storing raw text is helpful for debugging
             
         except Exception as e:
             print(f"Error on row {index}: {e}")
             scores.append(-1)
-            explanations.append("Error")
 
-    # Add results to dataframe
     df[OUTPUT_COL] = scores
-    df['raw_response'] = explanations # Useful to see why a score might be -1
-
-    # Save
     df.to_csv(OUTPUT_FILE, index=False)
-    print(f"\nDone! Processed {total} rows.")
-    print(f"Results saved to {OUTPUT_FILE}")
+    print(f"\nDone! Results saved to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     process_csv()
