@@ -112,7 +112,6 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
 
     try:
         with Pool(processes=num_processes, initializer=init_worker) as pool:
-            # Use imap_unordered to handle results as they complete
             for result in pool.imap_unordered(get_nutrition_info_parallel, unique_ingredients_list):
                 if result:
                     ingredient, info = result
@@ -125,10 +124,10 @@ def create_nutrition_lookup_table(input_df: pd.DataFrame):
                  ingredient, info = result
                  nutrition_lookup[ingredient] = info
 
-
     successful_matches = len([k for k, v in nutrition_lookup.items() if v])
 
-def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_parallel.csv'):
+
+def process_restaurants(input_file='restaurants_with_ingredients.csv', output_file='restaurant_averages_with_score.csv'):
     if not load_and_preprocess_data():
         return
 
@@ -155,6 +154,9 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
 
     lookup_df = pd.DataFrame.from_dict(nutrition_lookup, orient='index').reset_index()
     lookup_df.rename(columns={'index': 'ingredient_name'}, inplace=True)
+    for col in ['calories', 'sodium', 'protein']:
+        if col not in lookup_df.columns:
+            lookup_df[col] = np.nan
 
     merged_ingredients_df = ingredients_exploded_df.merge(lookup_df, on='ingredient_name', how='left')
 
@@ -162,13 +164,20 @@ def process_restaurants(input_file='restaurants_with_ingredients.csv', output_fi
 
     final_df = item_averages_df.groupby('restaurant_id').mean(numeric_only=True).reset_index()
 
-    final_df.rename(columns={
-        'item_calories': 'average_calories',
-        'item_sodium': 'average_sodium',
-        'item_protein': 'average_protein'
-    }, inplace=True)
+    expected_cols_map = {
+        'calories': 'average_calories',
+        'sodium': 'average_sodium',
+        'protein': 'average_protein'
+    }
 
-    print("Calculating Healthiness Score ")
+    for original_col, new_col in expected_cols_map.items():
+        if original_col not in final_df.columns:
+            final_df[original_col] = np.nan
+        final_df.rename(columns={original_col: new_col}, inplace=True)
+
+    final_df['average_calories'] = final_df['average_calories'].fillna(0.0)
+    final_df['average_sodium'] = final_df['average_sodium'].fillna(0.0)
+    final_df['average_protein'] = final_df['average_protein'].fillna(0.0)
 
     def calculate_deviation_ratio(ideal, avg_series):
         diff = np.abs(avg_series - ideal)
