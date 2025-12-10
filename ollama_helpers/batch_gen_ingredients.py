@@ -2,13 +2,12 @@ import pandas as pd
 import ollama
 
 MENU_FILE = 'datasets/restaurant-menus.csv'
+
 RESTAURANT_FILE = 'datasets/restaurants.csv'
 OUTPUT_FILE = 'restaurants_with_ingredients.csv'
-INPUT_COL = 'description'
+INPUT_COL = 'name_menu'
 OUTPUT_COL = 'ingredients'
 MODEL = 'llama3.2:3b-instruct-q8_0'
-
-
 STATE = "DC"
 
 def process_data():
@@ -16,7 +15,6 @@ def process_data():
     try:
         restaurant_menus_df = pd.read_csv(MENU_FILE)
         restaurants = pd.read_csv(RESTAURANT_FILE)
-        
         restaurants['state'] = restaurants['full_address'].str.split(', ').str[-2]
         restaurants = restaurants[restaurants['state'] == STATE].copy()
 
@@ -34,8 +32,8 @@ def process_data():
     )
 
     df.dropna(subset=['id'], inplace=True)
+    df = df[['restaurant_id', 'name_menu']]
 
-    
     if INPUT_COL not in df.columns:
         print(f"Error: Column '{INPUT_COL}' not found in the merged data.")
         return

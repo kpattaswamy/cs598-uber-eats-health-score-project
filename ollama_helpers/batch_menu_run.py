@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # --- CONFIGURATION ---
-INPUT_FILE = 'prompts-30.csv'       # Use 'prompts_test.csv' for testing!
+INPUT_FILE = 'prompts.csv'       # Use 'prompts_test.csv' for testing!
 OUTPUT_FILE = 'prompts_with_scores.csv'
 INPUT_COL = 'summary'
 OUTPUT_COL = 'nutrition_score'
