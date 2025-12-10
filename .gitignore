@@ -1,6 +1,5 @@
 datasets/**
 datasets/**/*.csv
 food_data/**/*.csv
-*.csv
 .DS_Store
 venv/
